@@ -33,31 +33,6 @@ Study Folder (.pptx/.pdf/.ipynb)
                                                           Your question
 ```
 
-## Quick Start
-
-```bash
-# 1. Clone & install
-git clone https://github.com/zaynby/Notes-summarizer.git
-cd Notes-summarizer
-pip install -r requirements.txt
-
-# 2. Configure
-cp .env.example .env
-# Set WATCH_FOLDER and optionally NVIDIA_API_KEY in .env
-
-# 3. Pull the embedding model (required)
-ollama pull nomic-embed-text
-
-# 4. Index existing notes
-python main.py sync
-
-# 5. Ask questions
-python main.py query "explain k-means clustering"
-
-# 6. Start watching for new files
-python main.py watch
-```
-
 ## Usage
 
 | Command | Description |
