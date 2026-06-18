@@ -1,0 +1,5 @@
+.env
+chromadb_data/
+__pycache__/
+*.pyc
+watcher.log
