@@ -1,22 +1,18 @@
 import logging
+from pathlib import Path
 from typing import List, Dict, Any, Optional
 import chromadb
 from chromadb.config import Settings
-from pathlib import Path
-
 import config
 
 log = logging.getLogger("vector_store")
-
 _collection = None
-
 
 def _get_collection():
     global _collection
     if _collection is None:
-        db_path = str(Path(config.CHROMADB_PATH).resolve())
         client = chromadb.PersistentClient(
-            path=db_path,
+            path=str(Path(config.CHROMADB_PATH).resolve()),
             settings=Settings(anonymized_telemetry=False)
         )
         _collection = client.get_or_create_collection(
@@ -25,104 +21,64 @@ def _get_collection():
         )
     return _collection
 
-
-def add_chunks(
-    chunks: List[Dict[str, Any]],
-    module: str,
-    filename: str,
-    file_path: str
-):
-    """Add chunked content to vector store."""
+def index_chunks(chunks: List[Dict[str, Any]], module: str, filename: str, file_path: str):
     collection = _get_collection()
-    existing_ids = set()
-    batch_ids = []
-    batch_embeddings = []
-    batch_metadatas = []
-    batch_documents = []
-
-    for i, chunk in enumerate(chunks):
-        if chunk.get("embedding_status") != "ok":
+    ids, embeddings, metadatas, documents = [], [], [], []
+    for chunk in chunks:
+        vec = chunk.get("embedding")
+        if not vec:
             continue
-
-        chunk_id = f"{file_path}:{i}"
-        if chunk_id in existing_ids:
-            continue
-        existing_ids.add(chunk_id)
-
-        batch_ids.append(chunk_id)
-        batch_embeddings.append(chunk["embedding"])
-        batch_metadatas.append({
+        chunk_id = f"{file_path}:{chunk['position']}"
+        ids.append(chunk_id)
+        embeddings.append(vec)
+        metadatas.append({
             "module": module,
             "filename": filename,
             "file_path": file_path,
-            "chunk_index": str(i),
+            "position": str(chunk["position"]),
+            "label": chunk.get("label", ""),
         })
-        batch_documents.append(chunk["text"])
+        documents.append(chunk["text"])
+    if ids:
+        collection.upsert(ids=ids, embeddings=embeddings, metadatas=metadatas, documents=documents)
+        log.info(f"Indexed {len(ids)} chunks from {filename}")
 
-    if batch_ids:
-        # Upsert to handle re-processing same file
-        collection.upsert(
-            ids=batch_ids,
-            embeddings=batch_embeddings,
-            metadatas=batch_metadatas,
-            documents=batch_documents,
-        )
-        log.info(f"Stored {len(batch_ids)} chunks for {filename}")
-    else:
-        log.warning(f"No chunks with valid embeddings for {filename}")
-
-
-def search_similar(query: str, top_k: int = 5) -> List[Dict[str, Any]]:
-    """Search vector store for chunks similar to query text."""
-    from rag.embedder import embed_text
-
-    vec = embed_text(query)
-    if not vec:
-        log.warning("Could not embed query, returning empty results")
-        return []
-
+def search(query_vec: List[float], top_k: int = 5, module: Optional[str] = None) -> List[Dict[str, Any]]:
     collection = _get_collection()
+    where = {"module": module} if module else None
     results = collection.query(
-        query_embeddings=[vec],
-        n_results=min(top_k, 20),
+        query_embeddings=[query_vec],
+        n_results=min(top_k, 50),
+        where=where,
     )
-
-    retrieved = []
+    out = []
     for i in range(len(results["ids"][0])):
-        retrieved.append({
+        out.append({
             "text": results["documents"][0][i],
             "module": results["metadatas"][0][i].get("module", "?"),
             "filename": results["metadatas"][0][i].get("filename", "?"),
-            "score": results["distances"][0][i] if results.get("distances") else 0,
+            "position": results["metadatas"][0][i].get("position", "?"),
+            "label": results["metadatas"][0][i].get("label", ""),
+            "score": round(results["distances"][0][i], 4) if results.get("distances") else 0,
         })
-    return retrieved
-
-
-def search_similar_by_module(
-    query: str, module: str, top_k: int = 5
-) -> List[Dict[str, Any]]:
-    """Search similar chunks, filtered by module."""
-    results = search_similar(query, top_k)
-    return [r for r in results if r.get("module") == module]
-
+    return out
 
 def file_exists(file_path: str) -> bool:
-    """Check if any chunks exist for a given file path."""
     collection = _get_collection()
-    count = collection.count()
-    if count == 0:
-        return False
-    results = collection.get(where={"file_path": file_path}, limit=1)
-    return len(results["ids"]) > 0
-
+    r = collection.get(where={"file_path": file_path}, limit=1)
+    return len(r["ids"]) > 0
 
 def delete_file(file_path: str):
-    """Delete all chunks for a given file path."""
-    collection = _get_collection()
-    collection.delete(where={"file_path": file_path})
-    log.info(f"Deleted chunks for {file_path}")
-
+    _get_collection().delete(where={"file_path": file_path})
 
 def count_chunks() -> int:
+    return _get_collection().count()
+
+def module_stats() -> List[Dict[str, Any]]:
     collection = _get_collection()
-    return collection.count()
+    all_meta = collection.get(limit=count_chunks())["metadatas"]
+    counts = {}
+    for m in all_meta:
+        mod = m.get("module", "unknown")
+        counts[mod] = counts.get(mod, 0) + 1
+    return [{"module": k, "chunks": v} for k, v in sorted(counts.items())]

@@ -1,108 +1,109 @@
-# Notes-summarizer
+# Study Knowledge Base RAG
 
-> AI-powered study agent that watches your school folders, classifies theory vs code, summarizes everything into a searchable RAG second brain. Query your notes in plain English.
+A local RAG (Retrieval-Augmented Generation) pipeline that indexes your lecture materials — slides, PDFs, and Jupyter notebooks — into a searchable vector database. Designed for agents to query.
 
-![Python](https://img.shields.io/badge/python-3.11+-blue?logo=python)
-![Ollama](https://img.shields.io/badge/LLM-Ollama%20%7C%20NVIDIA%20NIM%20%7C%20OpenRouter-green)
-![ChromaDB](https://img.shields.io/badge/vector-ChromaDB-yellow)
-![License](https://img.shields.io/badge/license-MIT-lightgrey)
+## Quick Start
 
----
+```bash
+pip install -r requirements.txt
+# Copy and edit .env.example → .env with your study folder path
+python main.py index
+python main.py query "your question"
+```
 
-## Features
+## Commands
 
-- **Auto-watch** — Watches folders for new `.pptx`, `.pdf`, `.ipynb` files and processes them instantly
-- **Smart classification** — Detects whether content is theory or practical code, routes to the right summary style
-- **RAG-powered Q&A** — Ask questions in natural language; retrieves semantically relevant chunks from your entire note corpus
-- **LLM-agnostic** — Works with Ollama (local), NVIDIA NIM (free tier), or OpenRouter — auto-detects and falls back
-- **Self-improving** — Evaluates summary quality every 5 files per module, adapts style family to what works best
-- **Idempotent sync** — Scan existing folders without reprocessing already-indexed files
-- **Per-module journals** — Tracks progress and style evolution for each subject
+| Command | Description |
+|---------|-------------|
+| `python main.py index` | Index all study materials |
+| `python main.py index --force` | Re-index everything |
+| `python main.py watch` | Index + watch for new/modified files |
+| `python main.py query "question"` | Search the knowledge base |
+| `python main.py query "question" --module deep_learning` | Search one module |
+| `python main.py stats` | Show per-module chunk counts |
+| `python main.py serve` | Start REST API for agent access |
+| `python main.py serve --port 9000` | Custom port |
+
+## Requirements
+
+- Python 3.11+
+- [Ollama](https://ollama.ai) running locally with `nomic-embed-text` model pulled
+- Windows (paths use backslash convention; adjustable for other OS)
+
+### Pull the embedding model
+
+```bash
+ollama pull nomic-embed-text
+```
+
+## REST API
+
+Start the server for agent access:
+
+```bash
+python main.py serve
+```
+
+```python
+import requests
+r = requests.post("http://localhost:8000/query", json={
+    "question": "explain backpropagation",
+    "module": "deep_learning",
+    "top_k": 5
+})
+print(r.json())
+```
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/health` | GET | Health check |
+| `/query` | POST | Search the knowledge base |
+| `/stats` | GET | Per-module chunk counts |
 
 ## Architecture
 
 ```
-Study Folder (.pptx/.pdf/.ipynb)
-        |
-    [Watcher] —──→ [Extractor] —──→ [Classifier] —──→ [Summarizer] ──→ Summary (.md)
-                           \                                    /
-                            └── [Chunker] ──→ [Embedder] ──→ [ChromaDB]
-                                                                |
-                                                           [Query Engine]
-                                                                |
-                                                          Your question
+main.py                CLI: index, watch, query, stats, serve
+config.py              Paths and settings
+module_detector.py     Extracts module name from file path
+extractors/            Text extraction per file type (pptx, pdf, ipynb)
+processing/
+  chunker.py           Structural chunking (no overlap)
+  filter.py            Skip exercises, solutions, certificates
+rag/
+  scanner.py           Walk source folder with filtering
+  indexer.py           Extract → chunk → embed → store
+  embedder.py          nomic-embed-text via Ollama
+  vector_store.py      ChromaDB operations
+  retriever.py         Query interface
+  watcher.py           File system watcher
+  api.py               FastAPI REST server
 ```
-
-## Usage
-
-| Command | Description |
-|---|---|
-| `python main.py watch` | Start folder watcher (processes new files in real-time) |
-| `python main.py sync [--force]` | Scan folder and index all unprocessed files |
-| `python main.py query "..."` | Ask a question over your vector store |
-| `python main.py status` | Show style memory, modules, and vector store stats |
-| `python main.py rag-count` | Count chunks in the vector store |
-| `python main.py eval [module]` | Evaluate & improve summary quality per module |
-| `python main.py process <file>` | Process a single file manually |
 
 ## Configuration
 
-All settings in `config.py` and `.env`:
+Copy `.env.example` to `.env` and set:
 
-| Variable | Default | Description |
-|---|---|---|
-| `WATCH_FOLDER` | *(required)* | Path to your study notes folder |
-| `NVIDIA_API_KEY` | — | NVIDIA NIM API key (free at build.nvidia.com) |
-| `OPENROUTER_API_KEY` | — | OpenRouter API key (optional fallback) |
-| `OLLAMA_MODEL` | `qwen2.5:7b` | Local LLM model name |
-| `EMBED_MODEL` | `nomic-embed-text` | Embedding model (must be in Ollama) |
-
-## Project Structure
-
+```env
+WATCH_FOLDER=C:\Path\To\Your\Study\Materials
 ```
-Notes-summarizer/
-├── main.py              # CLI entry point
-├── config.py            # Paths, models, chunk settings
-├── watcher.py           # Real-time folder monitor
-├── summarizer.py        # Classification → summarization pipeline
-├── llm.py               # Multi-provider LLM client
-├── query.py             # RAG question-answering
-├── module_detector.py   # Extract module name from file path
-├── journal.py           # Per-module progress journaling
-├── style_evaluator.py   # Self-improvement evaluation loop
-├── style_memory.py      # Per-module style state (JSON)
-├── extractors/          # Text extraction per file type
-│   ├── pptx_extractor.py
-│   ├── pdf_extractor.py
-│   └── ipynb_extractor.py
-├── rag/                 # Vector RAG pipeline
-│   ├── chunker.py       # Slide/cell/page-aware chunking
-│   ├── embedder.py      # nomic-embed-text wrapper
-│   ├── vector_store.py  # ChromaDB persistence layer
-│   └── __init__.py      # Ingest & retrieve helpers
-├── requirements.txt
-└── .env.example
-```
+
+## What gets indexed
+
+Only `.pptx`, `.pdf`, and `.ipynb` files. Filtered out automatically:
+- Exercises, tutorials, assignments, quizzes
+- OALs and in-class activities
+- Solutions and answer keys
+- Certificates and badges
+- Modules: `calculus`, `ehe`
 
 ## Tech Stack
 
-| Component | Choice | Why |
-|---|---|---|
-| **LLMs** | Ollama (local) / NVIDIA NIM / OpenRouter | Free, private, no API keys required for local |
-| **Embeddings** | `nomic-embed-text` via Ollama | 768-dim, local, zero cost |
-| **Vector store** | ChromaDB | Pure Python, persistent, no server needed |
-| **File parsing** | python-pptx, PyMuPDF, nbformat | Full coverage of school file formats |
-| **File watching** | watchdog | Cross-platform, event-driven |
-
-## How It Works
-
-1. **Detection** — A new file lands in your watch folder. The watcher picks it up.
-2. **Extraction** — Text is pulled out: slides for PPTX, pages for PDF, cells for IPYNB.
-3. **Classification** — The LLM decides: is this *theory* (lecture slides, notes) or *practical code* (exercises, notebooks)?
-4. **Summarization** — Content is summarized in a style family chosen per-module (structured academic, code breakdown, etc.), adapting over time.
-5. **Indexing** — The summary is chunked, embedded, and stored in ChromaDB.
-6. **Querying** — Ask a question → embed it → search top-5 similar chunks → LLM generates a grounded answer.
-
-## License
-
-MIT
+| Component | Choice |
+|-----------|--------|
+| Vector DB | ChromaDB |
+| Embeddings | nomic-embed-text (via Ollama) |
+| Chunking | Structural (by slide/page/cell) |
+| File parsing | python-pptx, PyMuPDF, nbformat |
+| File watching | watchdog |
+| REST API | FastAPI + uvicorn |

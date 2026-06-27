@@ -1,10 +1,7 @@
 .env
-.env.example
 chromadb_data/
 __pycache__/
 *.pyc
-watcher.log
+pipeline.log
 summarization/
-journals/
-style_memory.json
 .obsidian/
