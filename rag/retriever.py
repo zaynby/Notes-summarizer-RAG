@@ -9,6 +9,12 @@ def query(query_text, top_k=5, module=None):
     results = search(vec, top_k=top_k, module=module)
     return results
 
+def search_by_module(module: str, top_k: int = 20) -> list:
+    vec = embed_text(f"notes about {module}")
+    if not vec:
+        return []
+    return search(vec, top_k=top_k, module=module)
+
 def print_results(results):
     if not results:
         print("No results found.")
