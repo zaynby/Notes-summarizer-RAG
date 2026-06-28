@@ -15,5 +15,20 @@ if not WATCH_FOLDER:
 SUPPORTED_EXTENSIONS = {".pptx", ".pdf", ".ipynb"}
 SKIP_MODULES = {"calculus", "ehe"}
 CHROMADB_PATH = BASE_DIR / "chromadb_data"
+
+# Embedding
+EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "ollama")
 EMBEDDING_MODEL = "nomic-embed-text"
 OLLAMA_BASE_URL = "http://localhost:11434"
+HF_API_TOKEN = os.getenv("HF_API_TOKEN", "")
+HF_EMBEDDING_MODEL = os.getenv("HF_EMBEDDING_MODEL", "BAAI/bge-base-en-v1.5")
+
+# LLM (NVIDIA NIM)
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY", "")
+LLM_MODEL = os.getenv("LLM_MODEL", "meta/llama-3.1-8b-instruct")
+
+# Telegram
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+
+# API
+API_PORT = int(os.getenv("API_PORT", "8000"))

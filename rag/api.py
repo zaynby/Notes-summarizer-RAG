@@ -59,6 +59,10 @@ def query_endpoint(req: QueryRequest):
     return QueryResponse(results=[QueryResult(**r) for r in results])
 
 
+@app.get("/modules")
+def modules_endpoint():
+    return [m["module"] for m in module_stats()]
+
 @app.get("/stats", response_model=StatsResponse)
 def stats_endpoint():
     return StatsResponse(

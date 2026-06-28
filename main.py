@@ -7,6 +7,7 @@ Usage:
     python main.py query <question>    Search the knowledge base
     python main.py stats               Show indexing stats
     python main.py serve [--port N]    Start REST API server
+    python main.py telegram            Start Telegram bot (starts API server too)
 """
 
 import sys
@@ -67,7 +68,7 @@ def cmd_watch():
 
 def cmd_serve():
     import uvicorn
-    port = 8000
+    port = int(config.API_PORT)
     args = sys.argv[2:]
     for i, a in enumerate(args):
         if a == "--port" and i + 1 < len(args):
@@ -77,6 +78,21 @@ def cmd_serve():
                 pass
     print(f"Starting API server on http://localhost:{port}")
     uvicorn.run("rag.api:app", host="0.0.0.0", port=port, log_level="info")
+
+def cmd_telegram():
+    import threading, uvicorn, time
+    port = int(config.API_PORT)
+    t = threading.Thread(
+        target=uvicorn.run,
+        args=("rag.api:app",),
+        kwargs={"host": "0.0.0.0", "port": port, "log_level": "error"},
+        daemon=True,
+    )
+    t.start()
+    time.sleep(2)
+
+    from bot.telegram import run_bot
+    run_bot()
 
 
 def main():
@@ -91,6 +107,7 @@ def main():
         "stats": cmd_stats,
         "watch": cmd_watch,
         "serve": cmd_serve,
+        "telegram": cmd_telegram,
     }
 
     cmd = commands.get(command)
@@ -98,7 +115,7 @@ def main():
         cmd()
     else:
         print(f"Unknown command: {command}")
-        print("Available: index, query, stats, watch, serve")
+        print("Available: index, query, stats, watch, serve, telegram")
         sys.exit(1)
 
 
